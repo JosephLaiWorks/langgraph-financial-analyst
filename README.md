@@ -124,13 +124,14 @@ sentence-transformers/all-MiniLM-L6-v2
 To switch embedding models, edit LOCAL_EMBEDDING_MODEL in `config.py`, delete the chroma_db/ folder, and rebuild the vector databases.
 
 Rebuild after changing the embedding model
-* Windows cmd
+
+Windows cmd
 ```txt=
 rmdir /s /q chroma_db
 python build_rag.py
 ```
 
-* PowerShell
+PowerShell
 ```txt=
 Remove-Item -Recurse -Force chroma_db
 python build_rag.py
