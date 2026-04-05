@@ -1,0 +1,4 @@
+Place the following PDF files in this folder before running build_rag.py:
+
+1. FY24_Q4_Consolidated_Financial_Statements.pdf
+2. tsla-20241231-gen.pdf
