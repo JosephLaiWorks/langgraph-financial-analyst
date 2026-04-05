@@ -33,7 +33,6 @@ The goal of this assignment is to compare LangChain and LangGraph, and to build 
 ├── data/
 │   ├── FY24_Q4_Consolidated_Financial_Statements.pdf
 │   └── tsla-20241231-gen.pdf
-├── chroma_db/
 ├── build_rag.py
 ├── config.py
 ├── langgraph_agent.py
