@@ -329,18 +329,19 @@ The implementation also includes retry handling for provider/API failures.
 
 ## What I Implemented
 
-This project started from TA-provided assignment material and was extended into a more explicit multi-document workflow.
+This project started from TA-provided assignment scaffolding. The provided baseline already included the general LangGraph node structure (`retrieve`, `grade`, `rewrite`, `generate`), a ReAct baseline, vector-store initialization, and a simple router that could retrieve Apple, Tesla, or both documents.
 
-My main work includes:
+My work focused on completing/refining the assignment requirements and extending the baseline where the original workflow was not strict enough for comparison questions.
 
-- designing the LangGraph state and control flow
-- implementing Apple / Tesla / both / none routing
-- implementing relevance grading and query rewriting
-- implementing a dedicated dual-branch comparison workflow
-- adding evidence-based generation and safe fallbacks
-- supporting multiple LLM providers through configuration
-- testing multiple embedding-model and chunk-size configurations
-- documenting the system and its design decisions
+Key contributions:
+
+- refining the router, grader, rewriter, and generator behavior for the assignment requirements
+- strengthening grounded generation and `I don't know.` fallbacks when evidence is insufficient
+- independently designing and implementing a **dedicated Apple/Tesla dual-branch comparison workflow**
+- adding separate Apple-side and Tesla-side retrieval, grading, rewriting, retry state, and comparison generation
+- preventing comparison answers when evidence for either company is missing
+- testing two embedding models and three chunk-size configurations
+- analyzing retrieval trade-offs and documenting the system design
 
 ## Scope
 
