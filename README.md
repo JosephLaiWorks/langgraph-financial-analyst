@@ -111,6 +111,8 @@ What were Apple's research and development expenses in 2024?
 
 The rewrite preserves the original company and year instead of inventing new facts.
 
+![rewrite](images/rewrite.jpg)
+
 ### 5. Handle comparison questions separately
 
 For questions involving both Apple and Tesla, the graph creates separate company-specific queries and retrieves evidence from each vector store independently.
