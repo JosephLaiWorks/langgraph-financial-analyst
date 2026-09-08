@@ -122,7 +122,9 @@ I don't know.
 ```
 
 This avoids comparing one retrieved value with unsupported model memory.
+
 ![compare](images/compare.jpg)
+
 ## LangGraph State
 
 The graph stores workflow information in `AgentState`, including:
