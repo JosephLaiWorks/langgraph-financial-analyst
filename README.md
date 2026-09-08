@@ -1,34 +1,177 @@
-# Assignment 3: Autonomous Multi-Doc Financial Analyst
+# Multi-Doc Financial Analyst — LangGraph RAG
 
-## 1. Project Overview
-This project implements a multi-document financial analyst system for Apple and Tesla financial filings.
+A state-aware, multi-document financial QA system for Apple and Tesla financial filings.
 
-It includes:
-- a **LangChain Legacy Agent** based on the ReAct paradigm
-- a **LangGraph Agent** with intelligent routing, relevance grading, query rewriting, and answer generation
-- separate vector databases for Apple and Tesla financial documents
-- experiments on different embedding models and chunk sizes
+The project uses **LangGraph** to control retrieval, routing, and self-correction instead of relying on a single linear RAG chain. It can route a question to the appropriate company document, judge retrieval quality, rewrite weak queries, and generate answers only from retrieved evidence.
 
-The goal of this assignment is to compare LangChain and LangGraph, and to build a more controllable state-aware RAG system using LangGraph.
+## Highlights
 
----
+- **Multi-document routing**: classifies questions into `apple`, `tesla`, `both`, or `none`
+- **Separate Chroma vector stores** for Apple and Tesla documents
+- **Relevance grading** before answer generation
+- **Query rewriting** when retrieved evidence is insufficient
+- **Dedicated comparison workflow** for Apple-vs-Tesla questions
+- **Grounded generation**: answers only from retrieved context
+- **Safe fallback**: returns `I don't know.` when evidence is missing
+- Includes a **LangChain ReAct baseline** for comparison with the LangGraph workflow
+- Supports multiple LLM providers through environment configuration
 
-## 2. Features
-- Supports questions about **Apple**, **Tesla**, **both**, or **none**
-- Handles:
-  - single-company questions
-  - comparison questions
-  - irrelevant questions
-- Uses a **router** to choose the correct retrieval path
-- Uses a **grader** to judge whether retrieved documents are sufficient
-- Uses a **rewriter** to refine vague financial questions
-- Returns **I don't know** when evidence is insufficient
-- Includes a LangChain ReAct baseline for comparison
+## Architecture
 
----
+```mermaid
+flowchart TD
+    Q[User Question] --> R[Router]
 
-## 3. Project Structure
-```bash id="7s75es"
+    R -->|apple / tesla| RET[Retrieve]
+    RET --> G[Relevance Grader]
+    G -->|yes| GEN[Generate Answer]
+    G -->|no| RW[Rewrite Query]
+    RW --> RET
+
+    R -->|both| PREP[Prepare Company-specific Queries]
+    PREP --> AR[Retrieve Apple]
+    AR --> AG[Grade Apple Evidence]
+    AG -->|no| ARW[Rewrite Apple Query]
+    ARW --> AR
+    AG -->|yes| TR[Retrieve Tesla]
+
+    TR --> TG[Grade Tesla Evidence]
+    TG -->|no| TRW[Rewrite Tesla Query]
+    TRW --> TR
+    TG -->|yes| CG[Generate Comparison]
+
+    R -->|none| SAFE[No Relevant Evidence]
+    SAFE --> IDK[I don't know.]
+```
+
+## How It Works
+
+### 1. Build the retrieval layer
+
+`build_rag.py` performs the document ingestion pipeline:
+
+```text
+PDF
+ -> text extraction
+ -> text cleaning
+ -> chunking
+ -> embedding
+ -> Chroma vector store
+```
+
+The current configuration uses:
+
+- Apple: `FY24_Q4_Consolidated_Financial_Statements.pdf`
+- Tesla: `tsla-20241231-gen.pdf`
+- Vector database: **Chroma**
+- Default embedding model:
+  `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`
+
+The project also supports switching to:
+
+`sentence-transformers/all-MiniLM-L6-v2`
+
+### 2. Route each question
+
+The LangGraph router classifies a question into one of four targets:
+
+```text
+apple
+tesla
+both
+none
+```
+
+This keeps unrelated documents out of retrieval and gives comparison questions their own workflow.
+
+### 3. Grade retrieved evidence
+
+After retrieval, an LLM-based binary grader decides whether the retrieved context is sufficient:
+
+```text
+yes -> generate
+no  -> rewrite and retrieve again
+```
+
+The grader is deliberately strict: empty, unrelated, vague, or insufficient context is rejected.
+
+### 4. Rewrite weak queries
+
+If retrieval is not good enough, the system rewrites the query using more retrieval-friendly financial terminology.
+
+Example:
+
+```text
+Original:
+How much did Apple spend on new tech in 2024?
+
+Rewritten:
+What were Apple's research and development expenses in 2024?
+```
+
+The rewrite preserves the original company and year instead of inventing new facts.
+
+### 5. Handle comparison questions separately
+
+For questions involving both Apple and Tesla, the graph creates separate company-specific queries and retrieves evidence from each vector store independently.
+
+A comparison answer is generated only if **both sides** have sufficient retrieved evidence. Otherwise, the system returns:
+
+```text
+I don't know.
+```
+
+This avoids comparing one retrieved value with unsupported model memory.
+
+## LangGraph State
+
+The graph stores workflow information in `AgentState`, including:
+
+- original question
+- route target
+- retrieved documents
+- rewrite / search count
+- Apple-side query, evidence, grade, and retry count
+- Tesla-side query, evidence, grade, and retry count
+- final generation
+
+This explicit state is one of the main reasons LangGraph is more suitable than a simple linear chain for this workflow.
+
+## LangGraph vs. LangChain ReAct
+
+The repository also contains a legacy ReAct agent implemented with LangChain.
+
+### LangChain ReAct baseline
+
+The ReAct agent lets the LLM repeatedly choose tools using:
+
+```text
+Thought
+Action
+Action Input
+Observation
+...
+Final Answer
+```
+
+This approach is flexible, but much of the control flow is decided dynamically by the LLM.
+
+### LangGraph workflow
+
+LangGraph makes the control flow explicit:
+
+- route
+- retrieve
+- grade
+- rewrite
+- retry
+- generate
+
+For this project, LangGraph provides clearer state management and more predictable handling of failure cases such as insufficient retrieval or multi-company comparisons.
+
+## Project Structure
+
+```text
 .
 ├── data/
 │   ├── FY24_Q4_Consolidated_Financial_Statements.pdf
@@ -36,65 +179,61 @@ The goal of this assignment is to compare LangChain and LangGraph, and to build 
 ├── build_rag.py
 ├── config.py
 ├── langgraph_agent.py
-├── README.md
-└── report.pdf
+├── .env.example
+└── README.md
 ```
 
-## 4. Environment Setup
-### 4.1 Create a virtual environment
-```txt=
+`report.pdf` can also be kept in the repository if you want to preserve the original course submission and experiment discussion.
+
+## Setup
+
+### 1. Create and activate a virtual environment
+
+Windows:
+
+```bash
 python -m venv .venv
-```
-
-### 4.2 Activate the environment
-Windows
-```txt=
 .venv\Scripts\activate
 ```
 
-macOS / Linux
-```txt=
+macOS / Linux:
+
+```bash
+python -m venv .venv
 source .venv/bin/activate
 ```
 
-### 4.3 Install dependencies
-```txt=
-pip install -r requirements.txt
-```
+### 2. Configure the LLM provider
 
-## 5. API Configuration
+Copy `.env.example` to `.env` and fill in the API key for the provider you want to use.
 
-Create a `.env` file in the project folder:
-```txt=
+Example with OpenAI:
+
+```env
 LLM_PROVIDER=openai
 OPENAI_API_KEY=your_openai_api_key
 OPENAI_MODEL=gpt-4o-mini
 ```
 
-You may also switch to other providers supported in `config.py`, such as Google or Anthropic.
+`config.py` also supports Google Gemini and Anthropic.
 
-## 6. Build the Vector Databases
+### 3. Build the vector databases
 
-Place the Apple and Tesla PDF files in the data/ folder, then run:
-```txt=
+Place the Apple and Tesla PDFs in `data/`, then run:
+
+```bash
 python build_rag.py
 ```
 
-This script will:
-1. load the PDF files
-2. clean the text
-3. split documents into chunks
-4. generate embeddings
-5. store the embeddings in Chroma vector databases
+The generated Chroma databases are stored under:
 
-## 7. Run the LangGraph Agent
-Start Python:
-```txt=
-python
+```text
+chroma_db/
 ```
 
-Then run:
-```txt=
+### 4. Run the LangGraph agent
+
+```python
 from langgraph_agent import run_graph_agent
 
 print(run_graph_agent("What was Apple's revenue in 2024?"))
@@ -103,84 +242,113 @@ print(run_graph_agent("Compare Apple and Tesla revenue in 2024."))
 print(run_graph_agent("What is NVIDIA's revenue in 2024?"))
 ```
 
-## 8. Run the LangChain Legacy Agent
-Start Python:
-```txt=
-python
-```
-Then run:
-```txt=
+### 5. Run the LangChain ReAct baseline
+
+```python
 from langgraph_agent import run_legacy_agent
 
 print(run_legacy_agent("What was Apple's revenue in 2024?"))
 ```
-## 9. Embedding Model Experiments
-Two embedding models were tested:
-```txt=
+
+## Retrieval Experiments
+
+The project also evaluates retrieval design choices rather than treating the vector database configuration as fixed.
+
+### Embedding models
+
+Two embedding models were compared:
+
+```text
 sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
 sentence-transformers/all-MiniLM-L6-v2
 ```
 
-To switch embedding models, edit LOCAL_EMBEDDING_MODEL in `config.py`, delete the chroma_db/ folder, and rebuild the vector databases.
+In the tested Apple/Tesla financial-document workload, the two models produced **similar retrieval and answer quality**. A likely reason is that the corpus is small and highly focused, so both models already provide sufficient semantic representation for the tested questions.
 
-Rebuild after changing the embedding model
+The multilingual model did not show a strong advantage here because the source documents and required answers are primarily in English.
 
-Windows cmd
-```txt=
-rmdir /s /q chroma_db
-python build_rag.py
-```
+### Chunk size
 
-PowerShell
-```txt=
-Remove-Item -Recurse -Force chroma_db
-python build_rag.py
-```
+Three chunk sizes were tested:
 
-## 10. Chunk Size Experiments
-
-Chunk sizes tested:
-```txt=
+```text
 1000
 2000
 4000
 ```
 
-To test a different chunk size:
+The experiment focused on the trade-off between:
 
-1. edit chunk_size in `build_rag.py`
-2. delete `chroma_db/`
-3. rebuild the vector databases
+- **Context Precision** — smaller chunks are more focused and may reduce unrelated text
+- **Context Completeness** — larger chunks preserve more surrounding structure, which is useful for large financial tables
 
-Windows cmd
-```txt=
-rmdir /s /q chroma_db
-python build_rag.py
-```
+Observed interpretation:
 
-PowerShell
-```txt=
-Remove-Item -Recurse -Force chroma_db
-python build_rag.py
-```
+- `1000`: more focused retrieval, but greater risk of separating table labels, years, and values
+- `2000`: a balanced setting for the tested workload
+- `4000`: better table-context preservation, but with more irrelevant content inside each chunk
 
-## 11. Notes
-* The final answer is generated in English only
-* The system is designed to avoid hallucination
-* If evidence is insufficient, the system answers: I don't know
-* Apple and Tesla use separate retrievers backed by separate vector databases
-* Comparison questions are handled through a dedicated dual-branch LangGraph workflow
+Across the tested questions, overall answer differences were not dramatic. This suggests that, for a small and focused corpus, the **workflow design**—routing, grading, rewriting, and comparison handling—can matter more than changing the embedding model alone.
 
-## 12. Author
-LAI, YU-SHENG
+> Note: the current `build_rag.py` uses `chunk_size=1000`. The values above describe the configurations tested in the assignment report, not a claim that the repository is currently configured to 2000.
 
-This project is based on the TA-provided sample code and further extended for Assignment 3.
+To change either the embedding model or chunk size, rebuild `chroma_db/` so the stored vectors match the new configuration.
 
-My main contributions include:
-* designing the LangGraph workflow
-* implementing the Apple/Tesla comparison branch
-* refining router, grader, rewriter, and generator behavior
-* conducting embedding model experiments
-* conducting chunk size experiments
-* writing the report and project documentation
+## Tested Question Types
 
+The assignment report verifies the workflow on four representative cases:
+
+1. **Single-company factual query** — Apple revenue in 2024
+2. **Vague financial query requiring rewrite** — “new tech spending” rewritten toward R&D expenses
+3. **Cross-company comparison** — Apple vs. Tesla revenue
+4. **Out-of-scope query** — NVIDIA revenue, which safely falls back to `I don't know.`
+
+These cases exercise the router, grader, rewriter, comparison branch, and grounded fallback behavior.
+
+## Reliability Guardrails
+
+The generator is intentionally constrained:
+
+- answers must use only retrieved context
+- years such as 2024, 2023, and 2022 must be distinguished carefully
+- unsupported values must not be guessed
+- source tags are required in generated answers
+- missing evidence falls back to `I don't know.`
+
+The implementation also includes retry handling for provider/API failures.
+
+## Tech Stack
+
+- Python
+- LangGraph
+- LangChain
+- Chroma
+- Hugging Face Sentence Transformers
+- PyMuPDF
+- OpenAI / Google Gemini / Anthropic-compatible LangChain chat models
+
+## What I Implemented
+
+This project started from TA-provided assignment material and was extended into a more explicit multi-document workflow.
+
+My main work includes:
+
+- designing the LangGraph state and control flow
+- implementing Apple / Tesla / both / none routing
+- implementing relevance grading and query rewriting
+- implementing a dedicated dual-branch comparison workflow
+- adding evidence-based generation and safe fallbacks
+- supporting multiple LLM providers through configuration
+- testing multiple embedding-model and chunk-size configurations
+- documenting the system and its design decisions
+
+## Scope
+
+This is a course project intended to demonstrate:
+
+- stateful RAG workflows
+- multi-document retrieval
+- agent routing
+- retrieval self-correction
+- grounded answer generation
+- differences between LangChain ReAct and LangGraph orchestration
